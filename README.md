@@ -34,3 +34,5 @@ Options:
     -b    blockSz (fastKNN only) (default: 100)
     
     -i    iterations (fastKNN only) (default: 1)
+
+    -a    Spark API used. Valid values: rdd (RDDs), dfds (DataFrame/DataSet) (default: dfds)

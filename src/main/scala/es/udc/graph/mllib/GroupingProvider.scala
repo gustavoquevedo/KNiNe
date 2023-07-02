@@ -1,6 +1,5 @@
-package es.udc.graph
+package es.udc.graph.mllib
 
-import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.mllib.regression.LabeledPoint
 
 trait GroupingProvider extends Serializable
@@ -17,9 +16,9 @@ class DummyGroupingProvider() extends GroupingProvider
   {
     return DEFAULT_GROUPID
   }
-  def getGroupIdList():Iterable[Int]=
+  def getGroupIdList():List[Int]=
   {
-    return Iterable[Int](0)
+    return List[Int](0)
   }
   def numGroups:Int=1
 }

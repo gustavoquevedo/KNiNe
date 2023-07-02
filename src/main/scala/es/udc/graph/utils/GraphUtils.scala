@@ -24,7 +24,7 @@ object GraphUtils {
 
   def calculateNearest(data : RDD[(LabeledPoint, Long)], k: Int,
                        distance : (LabeledPoint, LabeledPoint) => Double,
-                       connections : RDD[Pair[Long, Long]]) : RDD[Pair[Long, List[Neighbor]]] = {
+                       connections : RDD[(Long, Long)]) : RDD[(Long, List[Neighbor])] = {
     val vertices = data.map{case a => a.swap}
     val edges = connections.map{case (a, b) => Edge(a, b, 0)}
     val graph = Graph(vertices, edges)

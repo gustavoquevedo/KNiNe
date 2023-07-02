@@ -1,4 +1,4 @@
-package es.udc.graph
+package es.udc.graph.mllib
 
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.mllib.regression.LabeledPoint

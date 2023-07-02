@@ -1,11 +1,9 @@
-package es.udc.graph
+package es.udc.graph.mllib
 
-import org.apache.spark.rdd.RDD
-import org.apache.spark.mllib.regression.LabeledPoint
-import org.apache.spark.mllib.linalg.Vectors
-import es.udc.graph.utils.GraphUtils
+import es.udc.graph._
 import org.apache.spark.HashPartitioner
-import breeze.linalg.{DenseVector => BDV}
+import org.apache.spark.mllib.regression.LabeledPoint
+import org.apache.spark.rdd.RDD
 
 
 
@@ -126,7 +124,7 @@ class SimpleLSHLookupKNNGraphBuilder(data:RDD[(Long,LabeledPoint)]) extends Simp
              //Merge neighbors found for the same element in different hash buckets
              .reduceByKey({case (neighbors1, neighbors2) => neighbors1.addElements(neighbors2)
                                                             neighbors1
-                           })
+                           }: (NeighborsForElement, NeighborsForElement) => NeighborsForElement)
              .partitionBy(data.partitioner.getOrElse(new HashPartitioner(data.getNumPartitions)))
     graph
   }
@@ -149,7 +147,7 @@ class SimpleLSHLookupKNNGraphBuilder(data:RDD[(Long,LabeledPoint)]) extends Simp
              .reduceByKey({case (neigh1, neigh2) =>
                              neigh1.addElements(neigh2)
                              neigh1
-                           })
+                           }: (GroupedNeighborsForElementWithComparisonCount, GroupedNeighborsForElementWithComparisonCount) => GroupedNeighborsForElementWithComparisonCount)
              .map(
                  {
                    case ((i1,grId2),neighs) => (i1,neighs)
@@ -160,7 +158,7 @@ class SimpleLSHLookupKNNGraphBuilder(data:RDD[(Long,LabeledPoint)]) extends Simp
                    case (neighs1, neighs2) =>
                      neighs1.addElements(neighs2)
                      neighs1
-                 }
+                 }: (GroupedNeighborsForElementWithComparisonCount,GroupedNeighborsForElementWithComparisonCount) => GroupedNeighborsForElementWithComparisonCount
                  )         
     graph
   }

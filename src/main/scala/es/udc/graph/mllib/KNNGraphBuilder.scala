@@ -1,19 +1,13 @@
-package es.udc.graph
+package es.udc.graph.mllib
 
-import Array._
-import collection.mutable.Map
-import collection.mutable.HashMap
-import scala.util.Random
-import scala.util.control.Breaks._
-import org.apache.spark.mllib.linalg.DenseVector
-import org.apache.spark.mllib.linalg.SparseVector
-import org.apache.spark.mllib.linalg.Vectors
-import org.apache.spark.rdd.RDD
-import org.apache.spark.mllib.regression.LabeledPoint
 import breeze.linalg.{DenseVector => BDV}
-import org.apache.spark.HashPartitioner
+import org.apache.spark.mllib.regression.LabeledPoint
+import org.apache.spark.rdd.RDD
+import org.apache.spark.{HashPartitioner, SparkContext}
+
 import java.io.File
-import org.apache.spark.SparkContext
+import scala.Array._
+import scala.collection.mutable.{HashMap, Map}
 
 object GraphBuilder
 {
@@ -21,10 +15,11 @@ object GraphBuilder
   {
     if (g1==null) return g2
     if (g2==null) return g1
-    return g1.union(g2).reduceByKey({case (groupedNeighbors1, groupedNeighbors2) =>
+    g1.union(g2).reduceByKey({case (groupedNeighbors1, groupedNeighbors2) =>
                                                       groupedNeighbors1.addElements(groupedNeighbors2)
                                                       groupedNeighbors1
-                                                    })
+                                                    }: (GroupedNeighborsForElementWithComparisonCount,
+      GroupedNeighborsForElementWithComparisonCount) => GroupedNeighborsForElementWithComparisonCount)
   }
 
   def readFromFiles(prefix:String, sc:SparkContext):RDD[(Long, GroupedNeighborsForElement)]=

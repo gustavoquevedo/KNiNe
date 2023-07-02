@@ -12,9 +12,7 @@ import es.udc.graph.sparkContextSingleton
 import org.apache.log4j.Logger
 import org.apache.log4j.Level
 import org.apache.spark.HashPartitioner
-import es.udc.graph.GraphMerger
-import es.udc.graph.IndexDistancePair
-import es.udc.graph.NeighborsForElement
+import es.udc.graph.mllib.{GraphMerger, IndexDistancePair, NeighborsForElement}
 
 object TruncateGraph
 {
@@ -60,7 +58,8 @@ object TruncateGraph
                                                                   neighs.addElement(values(1).toLong, values(2).toDouble)
                                                                   (values(0).toLong, neighs)
                                                         }).partitionBy(new HashPartitioner(numPartitions))
-                                                        .reduceByKey({case (l1,l2) => NeighborsForElement.merge(l1,l2)})
+                                                        .reduceByKey({case (l1,l2) => NeighborsForElement.merge(l1,l2)
+                                                        }: (NeighborsForElement, NeighborsForElement) => NeighborsForElement)
                                                         .sortBy(_._1, true, numPartitions)
     
     for (k <- List(2,4,8,16,32,64,128))

@@ -1,17 +1,8 @@
-package es.udc.graph
+package es.udc.graph.mllib
 
-import Array._
-import collection.mutable.Map
-import collection.mutable.HashMap
-import scala.util.Random
-import scala.util.control.Breaks._
-import org.apache.spark.mllib.linalg.DenseVector
-import org.apache.spark.mllib.linalg.SparseVector
-import org.apache.spark.mllib.linalg.Vectors
-import org.apache.spark.rdd.RDD
+import es.udc.graph._
 import org.apache.spark.mllib.regression.LabeledPoint
-import breeze.linalg.{DenseVector => BDV}
-import org.scalatest.Assertions
+import org.apache.spark.rdd.RDD
 
 object BruteForceKNNGraphBuilder
 {
@@ -130,7 +121,7 @@ object BruteForceKNNGraphBuilder
                 })
             .reduceByKey({case (n1, n2) => n1.addElements(n2)
                                            n1
-                })
+                }: (NeighborsForElement, NeighborsForElement) => NeighborsForElement)
             .map({case ((index,groupingId), neighbors) =>
                                       val gr=GroupedNeighborsForElement.newEmpty(grouper.getGroupIdList(),numNeighbors)
                                       gr.addElementsOfGroup(groupingId, neighbors)
@@ -138,7 +129,7 @@ object BruteForceKNNGraphBuilder
                 })
             .reduceByKey({case (l1,l2) =>
                                   l1.addElements(l2)
-                                  l1})
+                                  l1}: (GroupedNeighborsForElement, GroupedNeighborsForElement) => GroupedNeighborsForElement)
   }
   
   def parallelComputeGraph(data:RDD[(Long,LabeledPoint)], numNeighbors:Int, numPartitions:Int):(RDD[(Long, NeighborsForElement)],LookupProvider)=

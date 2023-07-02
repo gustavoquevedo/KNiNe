@@ -24,7 +24,8 @@ object Selection {
     val (s, b) = arr partition (_ < a)
 
     if (s.isEmpty) {
-      val (s, b) = arr partition (a ==)
+//      validate arr partition (a == _) same as (a == )
+      val (s, b) = arr partition (a == _)
       if (s.size >= k) a
       else findKMedian(b, k - s.size)(choosePivot)
     } else if (s.size == k-1){

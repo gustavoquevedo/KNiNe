@@ -1,28 +1,27 @@
-package es.udc.graph
+package es.udc.graph.mllib
 
-import Array._
-import scala.util.Random
-import scala.util.control.Breaks._
-import org.apache.spark.mllib.linalg.Vector
-import org.apache.spark.mllib.linalg.DenseVector
-import org.apache.spark.mllib.linalg.SparseVector
-import org.apache.spark.rdd.RDD
+import org.apache.spark.mllib.linalg.{DenseVector, SparseVector, Vector}
 import org.apache.spark.mllib.regression.LabeledPoint
-import org.apache.spark.internal.Logging
+import org.apache.spark.rdd.RDD
 
-class Hash(var values: Array[Int]) extends Serializable
+import scala.Array._
+import scala.util.Random
+
+class Hash(val values: Array[Int]) extends Serializable
 {
-    override val hashCode = values.deep.hashCode
-    override def equals(obj:Any) = obj.isInstanceOf[Hash] && obj.asInstanceOf[Hash].values.deep == this.values.deep
-    def concat(other:Hash):Hash=
-    {
-      return new Hash(this.values ++ other.values)
-    }
-    def cutLen(len: Int): Hash =
-    {
-      return new Hash(this.values.slice(0, len))
-    }
-    override def toString():String=s"[${values.map(_.toString()).mkString(",")} - ${values.size}]"
+      override val hashCode = values.deep.hashCode
+//  override val hashCode = values.toSet.hashCode()
+  override def equals(obj:Any) = obj.isInstanceOf[Hash] &&
+    obj.asInstanceOf[Hash].values.sameElements(this.values)
+  def concat(other:Hash):Hash=
+  {
+    return new Hash(this.values ++ other.values)
+  }
+  def cutLen(len: Int): Hash =
+  {
+    return new Hash(this.values.slice(0, len))
+  }
+  override def toString():String=s"[${values.map(_.toString()).mkString(",")} - ${values.size}]"
 }
 
 trait Hasher extends Serializable
@@ -42,7 +41,7 @@ trait AutotunedHasher extends Hasher
     getHasherForDataset(data, data.map({case (index, point) => point.features.size}).max(), desiredComparisons)
 }
 
-object EuclideanLSHasher extends AutotunedHasher with Logging
+object EuclideanLSHasher extends AutotunedHasher //with Logging
 {
   protected def log2(n: Double): Double =
   {
@@ -57,7 +56,7 @@ object EuclideanLSHasher extends AutotunedHasher with Logging
     val numElems=data.count()
     var initialKLength: Int = Math.ceil(log2(numElems / dimension)).toInt + 1
     if (initialKLength<2) initialKLength=2
-    logDebug(s"DEBUG: numElems=$numElems dimension=$dimension initialKLength=$initialKLength")
+//    logDebug(s"DEBUG: numElems=$numElems dimension=$dimension initialKLength=$initialKLength")
     val minKLength=if (initialKLength>10) (initialKLength / 2).toInt else 5 
     val maxKLength=if (initialKLength>15) (initialKLength * 1.5).toInt else 22
     val hNTables: Int = Math.floor(Math.pow(log2(dimension), 2)).toInt
@@ -65,7 +64,7 @@ object EuclideanLSHasher extends AutotunedHasher with Logging
     val currentData=initialData
     //val currentData=initialData.sample(false, 0.2, 34652912) //20% of the data usually does the job.
     
-    logDebug(s"Starting hyperparameter adjusting with:\n\tL:$initialKLength\n\tN:$hNTables\n\tR:$INITIAL_RADIUS\n\tC:$desiredComparisons")
+//    logDebug(s"Starting hyperparameter adjusting with:\n\tL:$initialKLength\n\tN:$hNTables\n\tR:$INITIAL_RADIUS\n\tC:$desiredComparisons")
     
     var (leftLimit,rightLimit)=(minKLength,maxKLength)
     var radius = INITIAL_RADIUS
@@ -80,7 +79,7 @@ object EuclideanLSHasher extends AutotunedHasher with Logging
       
       if ((largestBucketSize>=desiredComparisons*MIN_TOLERANCE) && (largestBucketSize<=desiredComparisons*MAX_TOLERANCE))
       {
-        logDebug(s"Found suitable hyperparameters:\n\tL:${tmpHasher.keyLength}\n\tN:${tmpHasher.numTables}\n\tR:$radius")
+//        logDebug(s"Found suitable hyperparameters:\n\tL:${tmpHasher.keyLength}\n\tN:${tmpHasher.numTables}\n\tR:$radius")
         return (tmpHasher,radius)
       }
       else
@@ -91,7 +90,7 @@ object EuclideanLSHasher extends AutotunedHasher with Logging
           {
             if (isRadiusAdjusted)
             {
-              logWarning(s"WARNING! - Had to go with hyperparameters:\n\tL:${tmpHasher.keyLength}\n\tN:${tmpHasher.numTables}\n\tR:$radius")
+//              logWarning(s"WARNING! - Had to go with hyperparameters:\n\tL:${tmpHasher.keyLength}\n\tN:${tmpHasher.numTables}\n\tR:$radius")
               return (tmpHasher,radius)
             }
             //We start over with a larger the radius
@@ -109,7 +108,7 @@ object EuclideanLSHasher extends AutotunedHasher with Logging
           {
             if (isRadiusAdjusted)
             {
-              logWarning(s"WARNING! - Had to go with hyperparameters:\n\tL:${tmpHasher.keyLength}\n\tN:${tmpHasher.numTables}\n\tR:$radius")
+//              logWarning(s"WARNING! - Had to go with hyperparameters:\n\tL:${tmpHasher.keyLength}\n\tN:${tmpHasher.numTables}\n\tR:$radius")
               return (tmpHasher,radius)
             }
             //We start over with a smaller the radius
@@ -123,12 +122,12 @@ object EuclideanLSHasher extends AutotunedHasher with Logging
         }
         if (rightLimit<=leftLimit)
         {
-          logWarning(s"WARNING! - Had to go with hyperparameters:\n\tL:${tmpHasher.keyLength}\n\tN:${tmpHasher.numTables}\n\tR:$radius")
+//          logWarning(s"WARNING! - Had to go with hyperparameters:\n\tL:${tmpHasher.keyLength}\n\tN:${tmpHasher.numTables}\n\tR:$radius")
           return (tmpHasher,radius)
         }
       }
       
-      logDebug(s"keyLength update to ${tmpHasher.keyLength} [$leftLimit - $rightLimit] with radius $radius because largestBucket was $largestBucketSize and wanted [${desiredComparisons*MIN_TOLERANCE} - ${desiredComparisons*MAX_TOLERANCE}]")
+//      logDebug(s"keyLength update to ${tmpHasher.keyLength} [$leftLimit - $rightLimit] with radius $radius because largestBucket was $largestBucketSize and wanted [${desiredComparisons*MIN_TOLERANCE} - ${desiredComparisons*MAX_TOLERANCE}]")
       println(s"keyLength update to ${tmpHasher.keyLength} [$leftLimit - $rightLimit] with radius $radius because largestBucket was $largestBucketSize and wanted [${desiredComparisons*MIN_TOLERANCE} - ${desiredComparisons*MAX_TOLERANCE}]")
     }
     return (new EuclideanLSHasher(dimension, 1, hNTables), radius)//Dummy
@@ -218,6 +217,7 @@ object EuclideanLSHasher extends AutotunedHasher with Logging
   {
     val t=this
     val bt=data.sparkContext.broadcast(t)
+
     return data.flatMap({ case (index, point) => bt.value.getHashes(point.features, index, radius) });
   }
 }
@@ -295,20 +295,21 @@ class EuclideanLSHasher(dimension:Int, kLength:Int, nTables:Int, splitW:Double=4
     }
     return hashes
   }
-  final def hashData(data: RDD[(Long, LabeledPoint)], radius: Double): RDD[(Hash, Long)] =
-  {
-    val t=this
-    val bt=data.sparkContext.broadcast(t)
+
+  final def hashData(data: RDD[(Long, LabeledPoint)], radius: Double): RDD[(Hash, Long)] = {
+    val t = this
+    val bt = data.sparkContext.broadcast(t)
     //println("DEBUG: Pre hashData flatMap call")
     data.flatMap({ case (index, point) => bt.value.getHashes(point.features, index, radius) });
   }
   def getBucketCount(data:RDD[(Long,LabeledPoint)], radius:Double):(Long,Int)=
   {
     //println("DEBUG: Pre hashData call")
-    val currentHashes = this.hashData(data, radius)
-    //println("DEBUG: Post hashData call")
-    //bucketCountBySize is a list of (bucket_size, count) tuples that indicates how many buckets of a given size there are. Count must be >1.
-    val bucketCountBySize = currentHashes.aggregateByKey(0)({ case (n, index) => n + 1 }, { case (n1, n2) => n1 + n2 })
+    val currentHashes: RDD[(Hash, Long)] = this.hashData(data, radius)
+
+    val bucketCountBySize = currentHashes
+//      .aggregateByKey(0)({ case (n, index) => n + 1 }, { case (n1, n2) => n1 + n2 })
+      .mapValues(_ => 1).reduceByKey(_ + _)
                                          .map({ case (h, n) => (n, 1) })
                                          .reduceByKey(_ + _)
                                          .filter({ case (n1, x) => n1 != 1 })
@@ -323,7 +324,7 @@ class EuclideanLSHasher(dimension:Int, kLength:Int, nTables:Int, splitW:Double=4
     //val numBuckets = if (bucketCountBySize.isEmpty()) 0 else bucketCountBySize.reduce({ case ((n1, x), (n2, y)) => (n1 + n2, x + y) })._2
     val numBuckets = if (bucketCountBySize.isEmpty()) 0 else bucketCountBySize.map(_._2).sum().toLong
     val largestBucketSize = if (bucketCountBySize.isEmpty()) 0 else bucketCountBySize.map(_._1).max()
-    return (numBuckets, largestBucketSize)
+    (numBuckets, largestBucketSize)
   }
 }
 
