@@ -2,7 +2,15 @@ package es.udc.graph
 
 
 import es.udc.graph.utils.SourceUnit
-import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.ml.linalg.Vectors
+import org.apache.spark.sql.{DataFrame, Row, SparkSession}
+import org.apache.spark.sql.types.{ArrayType, DoubleType, LongType, StructField, StructType}
+import org.apache.spark.ml.linalg.SparseVector
+import org.apache.spark.ml.feature.BucketedRandomProjectionLSH
+import org.apache.spark.sql.functions.lit
+
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 object KNiNeMain{
   private val DEFAULT_METHOD = "vrlsh"
@@ -10,8 +18,8 @@ object KNiNeMain{
   private val DEFAULT_REFINEMENT = 1
   private val DEFAULT_BLOCKSZ: Int = 100
   private val DEFAULT_ITERATIONS: Int = 1
-  private val DEFAULT_NUM_TABLES: Double = 0
-  private val DEFAULT_KEY_LENGTH: Double = 0
+  private val DEFAULT_NUM_TABLES: Int = 0
+  private val DEFAULT_KEY_LENGTH: Int = 0
   private val DEFAULT_SPARK_API = "dfds"
   val DEFAULT_NUM_PARTITIONS: Double = 512
   val DEFAULT_RADIUS_START = 0.1
@@ -38,7 +46,10 @@ object KNiNeMain{
       "libsvm"
     else
       "text"
-
+    val compareFile=if (options.exists(_._1=="compare"))
+      options("compare").asInstanceOf[String]
+    else
+      null
 
     implicit val spark = SparkSession.builder.appName("KNiNe")
       .master("local[1]")
@@ -48,15 +59,6 @@ object KNiNeMain{
     spark.sqlContext.setConf("spark.sql.shuffle.partitions", s"$numPartitions")
     spark.sqlContext.setConf("spark.default.parallelism", s"$numPartitions")
 
-
-    val data: DataFrame = (if (format == "libsvm") {
-      SourceUnit.readInputLibsvm(datasetFile)
-    } else {
-      SourceUnit.readInputTxt(datasetFile)
-
-    }).repartition(numPartitions)
-
-
     System.out.println("------------------------------")
     System.out.println(s"$options, $format, $datasetFile, $numPartitions, $method, $numNeighbors")
 
@@ -65,24 +67,82 @@ object KNiNeMain{
 
     var edges: Option[DataFrame] = None
     var edgesRList: Seq[DataFrame] = Seq.empty[DataFrame]
+    val timestamp = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss").format(LocalDateTime.now)
+    val fileName = options("output").asInstanceOf[String] + "_" + timestamp
 
-    if (sparkApi == "rdd"){
+    if (sparkApi == "rdd" || sparkApi == "all"){
+      val timeStartKnineRdd = System.currentTimeMillis();
+
       val (edgesRDD, edgesRRDDList) = mllib.KNiNe.process(kNiNeConf, format, datasetFile, numPartitions, method, numNeighbors)
       edges = Some(SourceUnit.distanceRDDToDataFrame(edgesRDD.get))
       edgesRList = edgesRRDDList.map(SourceUnit.distanceRDDToDataFrame)
+
+
+      val msKnineRdd = System.currentTimeMillis() - timeStartKnineRdd
+      System.out.println("------------------------------")
+      System.out.println(s"kNiNe (RDD) time: ${formatTime(msKnineRdd)}")
+      System.out.println("------------------------------")
+
+
+      if (edges.isDefined)
+        edges.get.coalesce(outputPartitionNumber)
+          .toDF("id1", "id2", "distance")
+          .sort("id1", "distance")
+          .write.mode("overwrite").csv(fileName + "_rdd")
     }
-    else {
-      val (edgesDf, edgesRListDf) = ml.KNiNe.process(kNiNeConf, data, numPartitions, method, numNeighbors)
-      edges = edgesDf
-      edgesRList = edgesRListDf
+    if (sparkApi == "dfds" || sparkApi == "dfdskn" || sparkApi == "dfdsml" || sparkApi == "all"){
+
+      println(s"Reading file: $datasetFile")
+      //load data
+      ///////////
+      val data: DataFrame = (if (format == "libsvm") {
+        SourceUnit.readInputLibsvm(datasetFile)
+      } else {
+        SourceUnit.readInputTxt(datasetFile)
+      }).repartition(numPartitions)
+
+      //process dataset
+      ////////
+
+      if (sparkApi != "dfdsml") {
+        val timeStartKnine = System.currentTimeMillis();
+
+        val (edgesDf, edgesRListDf) = ml.KNiNe.process(kNiNeConf, data, numPartitions, method, numNeighbors)
+
+        val msKnine = System.currentTimeMillis() - timeStartKnine
+        System.out.println("------------------------------")
+        System.out.println(s"kNiNe (Dataset) time: ${formatTime(msKnine)}")
+        System.out.println("------------------------------")
+
+        edges = edgesDf
+        edgesRList = edgesRListDf
+
+        if (edges.isDefined)
+          edges.get.coalesce(outputPartitionNumber)
+            .toDF("id1", "id2", "distance")
+            .sort("id1", "distance")
+            .write.mode("overwrite").csv(fileName + "_dfds")
+      }
+
+      if (sparkApi != "dfdskn") {
+        //// run spark.ml
+        ////////////
+
+        val timeStartSpark = System.currentTimeMillis();
+
+        val dataFrame = runBucketedLSH(spark, data, kNiNeConf, numNeighbors)
+
+        val msSpark = System.currentTimeMillis() - timeStartSpark
+
+        System.out.println("------------------------------")
+        System.out.println(s"Spark.ML time: ${formatTime(msSpark)}")
+        System.out.println("------------------------------")
+
+        dataFrame.coalesce(outputPartitionNumber)
+          .write.mode("overwrite").csv(fileName + "_ml")
+      }
     }
 
-    val fileName = options("output").asInstanceOf[String]
-    if(edges.isDefined)
-      edges.get.coalesce(outputPartitionNumber)
-        .toDF("id1", "id2", "distance")
-        .sort("id1", "distance")
-        .write.mode("overwrite").csv(fileName)
 
     //    edgesRList.zipWithIndex.foreach(edgesR => {
     //            edgesR._1.coalesce(outputPartitionNumber)
@@ -92,10 +152,11 @@ object KNiNeMain{
 
 
 
-    //    if (compareFile != null) {
-    //      //Compare with ground truth
-    //      CompareGraphs.printResults(CompareGraphs.compare(compareFile, fileName, None))
-    //CompareGraphs.comparePositions(compareFile.replace(numNeighbors+"", "128"), fileName)
+        if (compareFile != null) {
+          //Compare with ground truth
+          CompareGraphs.printResults(CompareGraphs.compare(compareFile, fileName, None))
+          //CompareGraphs.comparePositions(compareFile.replace(numNeighbors+"", "128"), fileName)
+        }
 
     //Compare refined with ground truth
 
@@ -104,6 +165,64 @@ object KNiNeMain{
     //CompareGraphs.comparePositions(compareFile.replace(numNeighbors+"", "128"), fileName)
 
     spark.stop()
+  }
+
+  def formatTime(milliseconds: Long): String = {
+    val seconds = (milliseconds / 1000) % 60
+    val minutes = (milliseconds / (1000 * 60)) % 60
+    f"$minutes%02d:$seconds%02d"
+  }
+
+  private def runBucketedLSH(spark: SparkSession, data: DataFrame, kNiNeConf: KNiNeConfiguration, numNeighbors: Int): DataFrame = {
+
+    val defaultBucketLength: Int = 2
+    val bucketLength: Int = kNiNeConf.keyLength.getOrElse(defaultBucketLength)
+    val defaultNumTables: Int = 3
+    val brp = new BucketedRandomProjectionLSH()
+      .setBucketLength(bucketLength.toDouble)
+      .setNumHashTables(kNiNeConf.numTables.getOrElse(defaultNumTables))
+      .setInputCol("features")
+      .setOutputCol("hashes")
+
+    val model = brp.fit(data)
+
+    val schema = StructType(Seq(
+      StructField("id", LongType, nullable = false),
+      StructField("neighborId", LongType, nullable = false),
+      StructField("distCol", DoubleType, nullable = false)
+    ))
+
+    var dataFrame = spark.createDataFrame(spark.sparkContext.emptyRDD[Row], schema)
+    val rows: Array[Row] = data.collect()
+    val sortedRows = rows.sortBy(_.getAs[Long](2) )
+
+    val datasetSize = rows.size
+
+    for (row <- sortedRows) {
+      val v = Vectors.dense(row.getAs[SparseVector]("features").values)
+      val id = row.getLong(2)
+
+      println(s"Processing record ${id+1} / $datasetSize")
+
+      val dfNeighborsIncItem = model.approxNearestNeighbors(data, v, numNeighbors).toDF()
+
+      println(s"Neighbours found ${dfNeighborsIncItem.count()} / $numNeighbors")
+
+      val dfNeighborsWithAllColumns = dfNeighborsIncItem.filter(dfNeighborsIncItem("id") =!= id)
+
+
+      val dfNeighbors = dfNeighborsWithAllColumns
+        .drop("label")
+        .drop("features")
+        .drop("hashes")
+        .withColumnRenamed("id","neighborId")
+        .withColumn("id", lit(id))
+        .select("id", "neighborId", "distCol")
+      dataFrame = dataFrame.union(dfNeighbors)
+    }
+    //data.show(Int.MaxValue, false)
+    dataFrame.show(Int.MaxValue, false)
+    dataFrame
   }
 
   def parseParams(p: Array[String]): Map[String, Any] = {
@@ -156,7 +275,7 @@ object KNiNeMain{
         }
       }
       else if (option == "spark_api") {
-        if (p(i + 1) == "rdd" || p(i + 1) == "dfds")
+        if (p(i + 1) == "rdd" || p(i + 1) == "dfds" || p(i + 1) == "dfdskn" || p(i + 1) == "dfdsml" || p(i + 1) == "all")
           m(option) = p(i + 1)
         else {
           println("Unknown spark_api:" + p(i + 1))
@@ -166,7 +285,7 @@ object KNiNeMain{
       else if (option == "compare")
         m(option) = p(i + 1)
       else if ((option == "refine") || (option == "blocksz") || (option == "iterations") ||
-          (option == "key_length") || (option == "num_tables"))
+        (option == "key_length") || (option == "num_tables"))
         m(option) = p(i + 1).toInt
       else
         m(option) = p(i + 1).toDouble
@@ -208,6 +327,8 @@ Advanced LSH options:
 """)
     System.exit(-1)
   }
+
+
   object KNiNeConfiguration
   {
     def getConfigurationFromOptions(options:Map[String, Any]):KNiNeConfiguration=
@@ -217,11 +338,11 @@ Advanced LSH options:
       else
         None
       val numTables=if (options.exists(_._1=="num_tables"))
-        Some(options("num_tables").asInstanceOf[Double].toInt)
+        Some(options("num_tables").asInstanceOf[Int])
       else
         None
       val keyLength=if (options.exists(_._1=="key_length"))
-        Some(options("key_length").asInstanceOf[Double].toInt)
+        Some(options("key_length").asInstanceOf[Int])
       else
         None
       val maxComparisons=if (options.exists(_._1=="max_comparisons"))

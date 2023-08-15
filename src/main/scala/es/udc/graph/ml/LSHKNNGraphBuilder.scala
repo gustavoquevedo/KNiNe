@@ -8,6 +8,8 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.functions._
 
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 object GraphMerger extends Serializable
 {
@@ -113,8 +115,11 @@ abstract class LSHKNNGraphBuilder extends GraphBuilder
         var subgraph=getGroupedGraphFromBuckets(data, hashBuckets, numNeighbors, measurer, grouper).coalesce(data.rdd.getNumPartitions)
         fullGraph=GraphBuilder.mergeSubgraphs(fullGraph, subgraph, numNeighbors, measurer).coalesce(data.rdd.getNumPartitions)
       }
-      else //DEBUG
-        println("No hash buckets created")
+      else { //DEBUG
+        val datetime = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH:mm").format(LocalDateTime.now)
+        println(f"[$datetime] No hash buckets created")
+      }
+
 
       //Separable buckets
       //println((currentData.first()._1,currentData.first()._2._2))
@@ -164,8 +169,10 @@ abstract class LSHKNNGraphBuilder extends GraphBuilder
         val subgraph=getGroupedGraphFromPartitionedBuckets(data, hashSeparableBuckets, numNeighbors, measurer, grouper).coalesce(data.rdd.getNumPartitions)
         fullGraph=GraphBuilder.mergeSubgraphs(fullGraph, subgraph, numNeighbors, measurer).coalesce(data.rdd.getNumPartitions)
       }
-      else //DEBUG
-        println("No separable hash buckets created")
+      else { //DEBUG
+        val datetime = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH:mm").format(LocalDateTime.now)
+        println(f"[$datetime] No separable hash buckets created")
+      }
 
       if (hashBucketsNotEmpty || hashSeparableBucketsNotEmpty)
       {
@@ -207,10 +214,13 @@ abstract class LSHKNNGraphBuilder extends GraphBuilder
       radius*=2
       nodesLeft=currentData.count()
 
+      val datetime = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH:mm").format(LocalDateTime.now)
       //DEBUG
-      println(" ----- "+nodesLeft+" nodes left ("+currentData.filter(r => !r._2._2.isEmpty).count()+" with at least one group complete). Radius:"+radius)
+      println(f" -- [$datetime] -- "+nodesLeft+" nodes left ("+currentData.filter(r => !r._2._2.isEmpty).count()+" with at least one group complete). Radius:"+radius)
       //currentData.map({case (id,(p,r)) => (r.size,1)}).reduceByKey(_+_).foreach(println)
       //fullGraph.foreach(println(_))
+
+      println(f"[$datetime] No separable hash buckets created")
     }
     if (fullGraph!=null)
     {
@@ -394,7 +404,7 @@ totalOps=totalOps+pairs.count()
     computeGraph(data,
       numNeighbors,
       //                           new EuclideanLSHasher(data.map({case (index, point) => point.features.size}).max(), hasherKeyLength, hasherNumTables),//Get dimension from dataset
-      new EuclideanLSHasher(data.groupBy().agg(max(size(col("_2")("features")))).as[Int].first(), hasherKeyLength, hasherNumTables),//Get dimension from dataset
+      new EuclideanLSHasher(data.map(_._2.features.size).reduce(Math.max(_, _)), hasherKeyLength, hasherNumTables), //Get dimension from dataset
       startRadius,
       maxComparisonsPerItem,
       measurer)
@@ -434,13 +444,13 @@ totalOps=totalOps+pairs.count()
         (index,if (incompleteGroups.isEmpty) None else Some(incompleteGroups)) //None indicates that it should be removed.
       })
     dataset.joinWith(requestsByNodes, dataset("_1") === requestsByNodes("_1"), "left")
-      .flatMap({case ((index, neighbors1), (_, requestsOption)) =>
+      .flatMap({ case ((index, neighbors1), requestsOption) =>
       if (requestsOption == null)
         Some((index, (neighbors1._1, List[Int]())))
       else
       {
-        if (requestsOption.isDefined)
-          Some((index, (neighbors1._1, requestsOption.get)))
+        if (requestsOption._2.isDefined)
+          Some((index, (neighbors1._1, requestsOption._2.get)))
         else
           None
       }
