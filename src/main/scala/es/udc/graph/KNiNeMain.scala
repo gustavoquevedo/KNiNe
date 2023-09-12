@@ -52,7 +52,7 @@ object KNiNeMain{
       null
 
     implicit val spark = SparkSession.builder.appName("KNiNe")
-      .master("local[1]")
+      //.master("local[1]")
       .config("spark.driver.maxResultSize", "2048MB")
       .getOrCreate()
 
@@ -69,8 +69,10 @@ object KNiNeMain{
     var edgesRList: Seq[DataFrame] = Seq.empty[DataFrame]
     val timestamp = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss").format(LocalDateTime.now)
     val fileName = options("output").asInstanceOf[String] + "_" + timestamp
+    var fileNameWithSuffix = fileName
 
     if (sparkApi == "rdd" || sparkApi == "all"){
+      fileNameWithSuffix = fileName + "_rdd"
       val timeStartKnineRdd = System.currentTimeMillis();
 
       val (edgesRDD, edgesRRDDList) = mllib.KNiNe.process(kNiNeConf, format, datasetFile, numPartitions, method, numNeighbors)
@@ -88,7 +90,7 @@ object KNiNeMain{
         edges.get.coalesce(outputPartitionNumber)
           .toDF("id1", "id2", "distance")
           .sort("id1", "distance")
-          .write.mode("overwrite").csv(fileName + "_rdd")
+          .write.mode("overwrite").csv(fileNameWithSuffix)
     }
     if (sparkApi == "dfds" || sparkApi == "dfdskn" || sparkApi == "dfdsml" || sparkApi == "all"){
 
@@ -105,6 +107,7 @@ object KNiNeMain{
       ////////
 
       if (sparkApi != "dfdsml") {
+        fileNameWithSuffix = fileName + "_dfds"
         val timeStartKnine = System.currentTimeMillis();
 
         val (edgesDf, edgesRListDf) = ml.KNiNe.process(kNiNeConf, data, numPartitions, method, numNeighbors)
@@ -121,10 +124,11 @@ object KNiNeMain{
           edges.get.coalesce(outputPartitionNumber)
             .toDF("id1", "id2", "distance")
             .sort("id1", "distance")
-            .write.mode("overwrite").csv(fileName + "_dfds")
+            .write.mode("overwrite").csv(fileNameWithSuffix)
       }
 
       if (sparkApi != "dfdskn") {
+        fileNameWithSuffix = fileName + "_ml"
         //// run spark.ml
         ////////////
 
@@ -139,7 +143,7 @@ object KNiNeMain{
         System.out.println("------------------------------")
 
         dataFrame.coalesce(outputPartitionNumber)
-          .write.mode("overwrite").csv(fileName + "_ml")
+          .write.mode("overwrite").csv(fileNameWithSuffix)
       }
     }
 
@@ -154,7 +158,7 @@ object KNiNeMain{
 
         if (compareFile != null) {
           //Compare with ground truth
-          CompareGraphs.printResults(CompareGraphs.compare(compareFile, fileName, None))
+          CompareGraphs.printResults(CompareGraphs.compare(compareFile, fileNameWithSuffix, None))
           //CompareGraphs.comparePositions(compareFile.replace(numNeighbors+"", "128"), fileName)
         }
 
@@ -199,7 +203,9 @@ object KNiNeMain{
     val datasetSize = rows.size
 
     for (row <- sortedRows) {
-      val v = Vectors.dense(row.getAs[SparseVector]("features").values)
+      val sparseVector = row.getAs[SparseVector]("features")
+      val v = Vectors.sparse(sparseVector.size, sparseVector.indices, sparseVector.values)
+
       val id = row.getLong(2)
 
       println(s"Processing record ${id+1} / $datasetSize")

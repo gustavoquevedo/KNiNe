@@ -107,7 +107,8 @@ object CompareGraphs {
   }
 
   @deprecated("need to use dataFrame implementation instead")
-  def compare(dataExact:RDD[(Long, (Long, Double))], rawDataInput:RDD[(Long, Long, Double)], dataset:Option[String])(implicit spark: SparkSession):(Double,Double,Option[Double],Option[Double])=
+  def compare(dataExact:RDD[(Long, (Long, Double))], rawDataInput
+              , dataset:Option[String])(implicit spark: SparkSession):(Double,Double,Option[Double],Option[Double])=
     {
       val sc=spark.sparkContext
       //Load data from files
