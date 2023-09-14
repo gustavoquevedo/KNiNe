@@ -4,7 +4,8 @@ import org.apache.spark.ml.feature.VectorAssembler
 import org.apache.spark.ml.linalg.Vector
 import org.apache.spark.ml.feature.LabeledPoint
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.functions.{col, lit, monotonically_increasing_id}
+import org.apache.spark.sql.expressions.Window
+import org.apache.spark.sql.functions.{col, lit, monotonically_increasing_id, row_number}
 import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
 import org.apache.spark.sql.types.{DoubleType, LongType, StructField, StructType}
 
@@ -20,7 +21,8 @@ object SourceUnit {
   def readInputLibsvm(path: String)(implicit spark: SparkSession): DataFrame = {
     spark.read.format("libsvm")
       .load(path)
-      .withColumn("id", monotonically_increasing_id())
+      .withColumn("sq_id_gaps", monotonically_increasing_id())
+      .withColumn("id", row_number().over(Window.orderBy("sq_id_gaps")) - 1)
     //           todo # in ald implementation it can have gaps, should be like for CompareGraphs?
     //            .withColumn("id", row_number().over(Window.orderBy("sq_id_gaps")))
   }

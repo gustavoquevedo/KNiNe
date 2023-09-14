@@ -102,7 +102,7 @@ object KNiNe
     //DEBUG
     //var counted=edges.map({case x=>(x._1,1)}).reduceByKey(_+_).sortBy(_._1)
     //var forCount=counted.map(_._2)
-
+    graph.cache()
     var countEdges = graph.rdd.map({ case (index, neighbors) => neighbors.listNeighbors.toSet.size }).sum
     println("Obtained " + countEdges + " edges for " + graph.count() + " nodes in " + (System.currentTimeMillis() - timeStart) + " milliseconds")
 
@@ -141,7 +141,7 @@ object KNiNe
         edgesR
       })
     }
-
+    graph.unpersist()
     (edges.map(SourceUnit.distanceDatasetToDataFrame) ,
       edgesRList.map(SourceUnit.distanceDatasetToDataFrame))
 //    (None, Nil)

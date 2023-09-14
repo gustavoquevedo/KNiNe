@@ -59,7 +59,8 @@ abstract class LSHKNNGraphBuilder extends GraphBuilder
     var nodesLeft=currentData.count()
     val bHasher=spark.sparkContext.broadcast(hasher)
 
-    println(f"Starting $numNeighbors%d-NN graph computation for $nodesLeft%d nodes")
+    val datetime = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss").format(LocalDateTime.now)
+    println(f"[$datetime] Starting $numNeighbors%d-NN graph computation for $nodesLeft%d nodes")
     println(f"\t R0=$radius%g")
     println(f"\t cMAX=${maxComparisonsPerItem.getOrElse("auto")}%s\n")
     //while(!currentData.isEmpty())
@@ -116,7 +117,7 @@ abstract class LSHKNNGraphBuilder extends GraphBuilder
         fullGraph=GraphBuilder.mergeSubgraphs(fullGraph, subgraph, numNeighbors, measurer).coalesce(data.rdd.getNumPartitions)
       }
       else { //DEBUG
-        val datetime = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH:mm").format(LocalDateTime.now)
+        val datetime = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss").format(LocalDateTime.now)
         println(f"[$datetime] No hash buckets created")
       }
 
@@ -170,7 +171,7 @@ abstract class LSHKNNGraphBuilder extends GraphBuilder
         fullGraph=GraphBuilder.mergeSubgraphs(fullGraph, subgraph, numNeighbors, measurer).coalesce(data.rdd.getNumPartitions)
       }
       else { //DEBUG
-        val datetime = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH:mm").format(LocalDateTime.now)
+        val datetime = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss").format(LocalDateTime.now)
         println(f"[$datetime] No separable hash buckets created")
       }
 
@@ -214,7 +215,7 @@ abstract class LSHKNNGraphBuilder extends GraphBuilder
       radius*=2
       nodesLeft=currentData.count()
 
-      val datetime = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH:mm").format(LocalDateTime.now)
+      val datetime = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss").format(LocalDateTime.now)
       //DEBUG
       println(f" -- [$datetime] -- "+nodesLeft+" nodes left ("+currentData.filter(r => !r._2._2.isEmpty).count()+" with at least one group complete). Radius:"+radius)
       //currentData.map({case (id,(p,r)) => (r.size,1)}).reduceByKey(_+_).foreach(println)

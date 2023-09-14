@@ -63,7 +63,7 @@ object CompareGraphs {
         .withColumn("sq_id_gaps", monotonically_increasing_id())
 //       todo # for calc sq without gaps, it will collect data in one partition (works as old version)
 //        should we implement some other solution? Need to understand input more
-        .withColumn("sq_id", row_number().over(Window.orderBy("sq_id_gaps")))
+        .withColumn("sq_id", row_number().over(Window.orderBy("sq_id_gaps")) - 1)
         .repartition(KNiNeMain.DEFAULT_NUM_PARTITIONS.toInt)
         .transform(broadcast)
 
@@ -107,8 +107,7 @@ object CompareGraphs {
   }
 
   @deprecated("need to use dataFrame implementation instead")
-  def compare(dataExact:RDD[(Long, (Long, Double))], rawDataInput
-              , dataset:Option[String])(implicit spark: SparkSession):(Double,Double,Option[Double],Option[Double])=
+  def compare(dataExact:RDD[(Long, (Long, Double))], rawDataInput:RDD[(Long, Long, Double)], dataset:Option[String])(implicit spark: SparkSession):(Double,Double,Option[Double],Option[Double])=
     {
       val sc=spark.sparkContext
       //Load data from files

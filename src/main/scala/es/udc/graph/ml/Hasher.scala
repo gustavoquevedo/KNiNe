@@ -4,7 +4,8 @@ package es.udc.graph.ml
 
 import org.apache.spark.ml.feature.LabeledPoint
 import org.apache.spark.ml.linalg.{DenseVector, SparseVector, Vector}
-import org.apache.spark.sql.functions.monotonically_increasing_id
+import org.apache.spark.sql.expressions.Window
+import org.apache.spark.sql.functions.{monotonically_increasing_id, row_number}
 import org.apache.spark.sql.{Dataset, SparkSession}
 
 import scala.Array._
@@ -351,8 +352,8 @@ class EuclideanProjectedLSHasher(dimension: Int, kLength: Int, nTables: Int, blo
 
     hashes.map({ case (h, id) =>
       (h.values.zip(w).map({ case (hi, wi) => hi * wi }).sum, id)
-    }).sort($"_1")
-      .withColumn("sq_id", monotonically_increasing_id()).as[(Double, Long, Long)]
+    })
+      .withColumn("sq_id", row_number().over(Window.orderBy($"_1")) - 1).as[(Double, Long, Long)]
       .map({ case (proj, id, pos) => (new Hash(Array((pos / blockSz.toLong).toInt)), id) })
   }
 }
@@ -396,8 +397,7 @@ class PrecomputedProjectedLSHasher(kLength: Int, blockSz: Int) extends Hasher {
     return hashes.map({ case (h, id) =>
       (h.values.zip(w).map({ case (hi, wi) => hi * wi }).sum, id)
     })
-      .sort($"_1", $"_2")
-      .withColumn("sq_id", monotonically_increasing_id()).as[(Double, Long, Long)]
+      .withColumn("sq_id", row_number().over(Window.orderBy($"_1", $"_2")) - 1).as[(Double, Long, Long)]
       .map({ case (proj, id, pos) => (new Hash(Array((pos / blockSz.toLong).toInt)), id) })
   }
 }

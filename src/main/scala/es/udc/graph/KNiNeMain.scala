@@ -54,10 +54,15 @@ object KNiNeMain{
     implicit val spark = SparkSession.builder.appName("KNiNe")
       //.master("local[1]")
       .config("spark.driver.maxResultSize", "2048MB")
+      .config("spark.driver.memory", "3048MB")
+//      .config("spark.executor.memory", "2048MB")
       .getOrCreate()
 
     spark.sqlContext.setConf("spark.sql.shuffle.partitions", s"$numPartitions")
     spark.sqlContext.setConf("spark.default.parallelism", s"$numPartitions")
+//    spark.sqlContext.setConf("spark.memory.offHeap.enabled", "true")
+//    spark.memory.offHeap.enabled
+//    println(spark.sqlContext.getConf("spark.memory.offHeap.enabled"))
 
     System.out.println("------------------------------")
     System.out.println(s"$options, $format, $datasetFile, $numPartitions, $method, $numNeighbors")
@@ -67,25 +72,20 @@ object KNiNeMain{
 
     var edges: Option[DataFrame] = None
     var edgesRList: Seq[DataFrame] = Seq.empty[DataFrame]
-    val timestamp = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss").format(LocalDateTime.now)
+    var timestamp = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss").format(LocalDateTime.now)
+    System.out.println(s"[$timestamp] Started")
     val fileName = options("output").asInstanceOf[String] + "_" + timestamp
     var fileNameWithSuffix = fileName
 
     if (sparkApi == "rdd" || sparkApi == "all"){
       fileNameWithSuffix = fileName + "_rdd"
-      val timeStartKnineRdd = System.currentTimeMillis();
 
       val (edgesRDD, edgesRRDDList) = mllib.KNiNe.process(kNiNeConf, format, datasetFile, numPartitions, method, numNeighbors)
       edges = Some(SourceUnit.distanceRDDToDataFrame(edgesRDD.get))
       edgesRList = edgesRRDDList.map(SourceUnit.distanceRDDToDataFrame)
 
-
-      val msKnineRdd = System.currentTimeMillis() - timeStartKnineRdd
-      System.out.println("------------------------------")
-      System.out.println(s"kNiNe (RDD) time: ${formatTime(msKnineRdd)}")
-      System.out.println("------------------------------")
-
-
+      timestamp = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss").format(LocalDateTime.now)
+      println(s"[$timestamp] Writing file (KNiNe-RDD): $fileNameWithSuffix")
       if (edges.isDefined)
         edges.get.coalesce(outputPartitionNumber)
           .toDF("id1", "id2", "distance")
@@ -93,8 +93,8 @@ object KNiNeMain{
           .write.mode("overwrite").csv(fileNameWithSuffix)
     }
     if (sparkApi == "dfds" || sparkApi == "dfdskn" || sparkApi == "dfdsml" || sparkApi == "all"){
-
-      println(s"Reading file: $datasetFile")
+      timestamp = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss").format(LocalDateTime.now)
+      println(s"[$timestamp] Reading file: $datasetFile")
       //load data
       ///////////
       val data: DataFrame = (if (format == "libsvm") {
@@ -108,18 +108,12 @@ object KNiNeMain{
 
       if (sparkApi != "dfdsml") {
         fileNameWithSuffix = fileName + "_dfds"
-        val timeStartKnine = System.currentTimeMillis();
-
         val (edgesDf, edgesRListDf) = ml.KNiNe.process(kNiNeConf, data, numPartitions, method, numNeighbors)
-
-        val msKnine = System.currentTimeMillis() - timeStartKnine
-        System.out.println("------------------------------")
-        System.out.println(s"kNiNe (Dataset) time: ${formatTime(msKnine)}")
-        System.out.println("------------------------------")
-
         edges = edgesDf
         edgesRList = edgesRListDf
 
+        timestamp = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss").format(LocalDateTime.now)
+        println(s"[$timestamp] Writing file (KNiNe-dataset): $fileNameWithSuffix")
         if (edges.isDefined)
           edges.get.coalesce(outputPartitionNumber)
             .toDF("id1", "id2", "distance")
@@ -132,16 +126,10 @@ object KNiNeMain{
         //// run spark.ml
         ////////////
 
-        val timeStartSpark = System.currentTimeMillis();
-
         val dataFrame = runBucketedLSH(spark, data, kNiNeConf, numNeighbors)
 
-        val msSpark = System.currentTimeMillis() - timeStartSpark
-
-        System.out.println("------------------------------")
-        System.out.println(s"Spark.ML time: ${formatTime(msSpark)}")
-        System.out.println("------------------------------")
-
+        timestamp = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss").format(LocalDateTime.now)
+        println(s"[$timestamp] Writing file (Spark.ML): $fileNameWithSuffix")
         dataFrame.coalesce(outputPartitionNumber)
           .write.mode("overwrite").csv(fileNameWithSuffix)
       }
@@ -157,6 +145,8 @@ object KNiNeMain{
 
 
         if (compareFile != null) {
+          timestamp = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss").format(LocalDateTime.now)
+          System.out.println(s"[$timestamp] Comparing with $compareFile")
           //Compare with ground truth
           CompareGraphs.printResults(CompareGraphs.compare(compareFile, fileNameWithSuffix, None))
           //CompareGraphs.comparePositions(compareFile.replace(numNeighbors+"", "128"), fileName)
@@ -169,6 +159,8 @@ object KNiNeMain{
     //CompareGraphs.comparePositions(compareFile.replace(numNeighbors+"", "128"), fileName)
 
     spark.stop()
+    timestamp = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss").format(LocalDateTime.now)
+    System.out.println(s"[$timestamp] Finished")
   }
 
   def formatTime(milliseconds: Long): String = {
